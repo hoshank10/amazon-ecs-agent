@@ -228,6 +228,12 @@ func (c *common) buildAWSVPCNetworkNamespaces(
 
 	// Order the containers such that the container attached to the interface with index 0 comes first.
 	sort.Slice(taskPayload.Containers, func(i, j int) bool {
+		if taskPayload.Containers[i].NetworkInterfaceNames == nil || len(taskPayload.Containers[i].NetworkInterfaceNames) == 0 {
+			return false
+		}
+		if taskPayload.Containers[j].NetworkInterfaceNames == nil || len(taskPayload.Containers[j].NetworkInterfaceNames) == 0 {
+			return true
+		}
 		iName := aws.StringValue(taskPayload.Containers[i].NetworkInterfaceNames[0])
 		jName := aws.StringValue(taskPayload.Containers[j].NetworkInterfaceNames[0])
 		return aws.Int64Value(ifNameMap[iName].Index) < aws.Int64Value(ifNameMap[jName].Index)
@@ -239,18 +245,20 @@ func (c *common) buildAWSVPCNetworkNamespaces(
 	for _, container := range taskPayload.Containers {
 		// ifaces holds all interfaces associated with a particular container.
 		var ifaces []*ecsacs.ElasticNetworkInterface
-		for _, ifNameP := range container.NetworkInterfaceNames {
-			ifName := aws.StringValue(ifNameP)
-			if iface := ifNameMap[ifName]; iface != nil {
-				ifaces = append(ifaces, iface)
-				// Remove ENI from map to indicate that the ENI is assigned to
-				// a namespace.
-				delete(ifNameMap, ifName)
-			} else {
-				// If the ENI does not exist in the lookup map, it means the ENI
-				// is already assigned to a namespace. The container will be run
-				// in the same namespace.
-				break
+		if container.NetworkInterfaceNames != nil || len(container.NetworkInterfaceNames) != 0 {
+			for _, ifNameP := range container.NetworkInterfaceNames {
+				ifName := aws.StringValue(ifNameP)
+				if iface := ifNameMap[ifName]; iface != nil {
+					ifaces = append(ifaces, iface)
+					// Remove ENI from map to indicate that the ENI is assigned to
+					// a namespace.
+					delete(ifNameMap, ifName)
+				} else {
+					// If the ENI does not exist in the lookup map, it means the ENI
+					// is already assigned to a namespace. The container will be run
+					// in the same namespace.
+					break
+				}
 			}
 		}
 
